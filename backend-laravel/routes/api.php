@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\V1\LocationController;
 use App\Http\Controllers\Api\V1\UserController;
 use App\Http\Controllers\Api\V1\ActivityLogController;
 use App\Http\Controllers\Api\V1\NotificationController;
+use App\Http\Controllers\Api\V1\UsageController;
 
 Route::get('/', function () {
     return response()->json([
@@ -48,6 +49,9 @@ Route::get('/notifications', [NotificationController::class, 'index']);
 Route::get('/notifications/statistics', [NotificationController::class, 'statistics']);
 Route::get('/notifications/unread-count', [NotificationController::class, 'unreadCount']);
 Route::put('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
+Route::get('/usage/quarterly', [UsageController::class, 'getQuarterlyUsage']);
+Route::get('/usage/forecast-data', [UsageController::class, 'getForecastData']);
+Route::get('/items/export/monitoring-assets', [ItemController::class, 'exportMonitoringAssets']);
 
 // QR Code Validation endpoint outside v1 group
 Route::post('/items/{uuid}/validate-qr', [ItemController::class, 'validateQRCode']);
@@ -102,5 +106,12 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     Route::get('notifications/statistics', [NotificationController::class, 'statistics']);
     Route::get('notifications/unread-count', [NotificationController::class, 'unreadCount']);
     Route::put('notifications/{id}/read', [NotificationController::class, 'markAsRead']);
+
+    // USAGE ANALYTICS
+    Route::get('usage/quarterly', [UsageController::class, 'getQuarterlyUsage']);
+    Route::get('usage/forecast-data', [UsageController::class, 'getForecastData']);
+
+    // ITEM EXPORTS
+    Route::get('items/export/monitoring-assets', [ItemController::class, 'exportMonitoringAssets']);
 
 });

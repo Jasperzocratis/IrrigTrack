@@ -75,4 +75,8 @@ class Item extends Model
         return $this->hasMany(Notification::class, 'item_id', 'id');
     }
 
+    public function usages()
+    {
+        return $this->hasMany(ItemUsage::class, 'item_id', 'id');
+    }
 }

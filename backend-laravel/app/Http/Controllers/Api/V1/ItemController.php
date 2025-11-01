@@ -13,6 +13,9 @@ use App\Services\V1\ItemService;
 use App\Services\V1\QrCodeService;
 use App\Traits\LogsActivity;
 use App\Jobs\CheckLowStockJob;
+use App\Models\ItemUsage;
+use App\Exports\MonitoringAssetsExport;
+use Maatwebsite\Excel\Facades\Excel;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
@@ -127,6 +130,9 @@ class ItemController extends Controller
     {
         $itemService = new ItemService();
         
+        // Store old quantity BEFORE updating (for usage tracking)
+        $oldQuantity = $item->quantity;
+        
         // Update the item with validated data
         $item->update($request->validated());
         
@@ -138,6 +144,21 @@ class ItemController extends Controller
         
         // Log item update
         $this->logItemActivity($request, 'Updated', $item->unit ?? $item->description, $item->uuid);
+        
+        // Track usage/restock if quantity changed
+        if ($request->has('quantity')) {
+            $newQuantity = $request->input('quantity');
+            
+            if ($newQuantity > $oldQuantity) {
+                // Quantity increased - this is a restock
+                $restockQty = $newQuantity - $oldQuantity;
+                $this->trackItemRestock($item, $oldQuantity, $newQuantity, $restockQty);
+            } elseif ($newQuantity < $oldQuantity) {
+                // Quantity decreased - this is usage
+                $usedQty = $oldQuantity - $newQuantity;
+                $this->trackItemUsage($item, $oldQuantity, $newQuantity, $usedQty);
+            }
+        }
         
         // Refresh item to get latest data after update
         $item->refresh();
@@ -345,9 +366,15 @@ class ItemController extends Controller
         return response()->json(['message' => 'Not enough quantity available.'], 400);
     }
 
+    // Store old quantity for usage tracking
+    $oldQuantity = $item->quantity;
+
     // Subtract borrowed quantity
     $item->quantity -= $request->quantity;
     $item->save();
+
+    // Track usage automatically
+    $this->trackItemUsage($item, $oldQuantity, $item->quantity, $request->quantity);
 
     // Log the borrow transaction
     $borrow = BorrowTransaction::create([
@@ -379,6 +406,43 @@ class ItemController extends Controller
         'remaining_quantity' => $item->quantity,
         'borrow' => $borrow,
     ], 200);
+}
+
+    /**
+     * Export monitoring assets to Excel
+     */
+    public function exportMonitoringAssets(Request $request)
+    {
+        try {
+            $category = $request->input('category');
+            $location = $request->input('location');
+            $itemsParam = $request->input('items'); // Optional: JSON string of items from frontend
+
+            $fileName = 'Monitoring_Assets_' . date('Y-m-d_His') . '.xlsx';
+            
+            // Decode items if provided as JSON string
+            $items = null;
+            if ($itemsParam) {
+                $decodedItems = is_string($itemsParam) ? json_decode($itemsParam, true) : $itemsParam;
+                if (is_array($decodedItems) && count($decodedItems) > 0) {
+                    $items = $decodedItems;
+                }
+            }
+            
+            if ($items) {
+                // Export filtered items from frontend
+                return Excel::download(new MonitoringAssetsExport($items, $category, $location), $fileName);
+            } else {
+                // Export all items based on filters
+                return Excel::download(new MonitoringAssetsExport(null, $category, $location), $fileName);
+            }
+        } catch (\Exception $e) {
+            \Log::error('Error exporting monitoring assets: ' . $e->getMessage());
+            return response()->json([
+                'message' => 'Failed to export monitoring assets: ' . $e->getMessage(),
+                'status' => 'error'
+            ], 500);
+        }
 }
 
     /**
@@ -426,6 +490,101 @@ class ItemController extends Controller
                 'message' => 'Failed to validate QR code: ' . $e->getMessage(),
                 'status' => 'error'
             ], 500);
+        }
+    }
+
+    /**
+     * Track item usage when quantity decreases
+     *
+     * @param Item $item
+     * @param int $oldQuantity
+     * @param int $newQuantity
+     * @param int $usedQty
+     * @return void
+     */
+    private function trackItemUsage(Item $item, int $oldQuantity, int $newQuantity, int $usedQty): void
+    {
+        try {
+            // Get current period (auto-calculated by ItemUsage model)
+            $period = ItemUsage::getCurrentPeriod();    
+
+            // Find or create usage record for this period
+            $usage = ItemUsage::firstOrCreate(
+                [
+                    'item_id' => $item->id,
+                    'period' => $period,
+                ],
+                [
+                    'stock_start' => $oldQuantity,
+                    'usage' => 0,
+                    'stock_end' => $newQuantity,
+                ]
+            );
+
+            // Update usage record
+            $usage->usage += $usedQty;
+            $usage->stock_end = $newQuantity;
+            
+            // Set stock_start if it's null (first usage in this period)
+            if ($usage->stock_start === null) {
+                $usage->stock_start = $oldQuantity;
+            }
+            
+            $usage->save();
+
+            \Log::info("Tracked usage for item {$item->id} in {$period}: {$usedQty} units used");
+        } catch (\Exception $e) {
+            \Log::error("Failed to track item usage: " . $e->getMessage());
+            // Don't fail the request if tracking fails
+        }
+    }
+
+    /**
+     * Track item restock when quantity increases
+     *
+     * @param Item $item
+     * @param int $oldQuantity
+     * @param int $newQuantity
+     * @param int $restockQty
+     * @return void
+     */
+    private function trackItemRestock(Item $item, int $oldQuantity, int $newQuantity, int $restockQty): void
+    {
+        try {
+            // Get current period (auto-calculated by ItemUsage model)
+            $period = ItemUsage::getCurrentPeriod();
+
+            // Find or create usage record for this period
+            $usage = ItemUsage::firstOrCreate(
+                [
+                    'item_id' => $item->id,
+                    'period' => $period,
+                ],
+                [
+                    'stock_start' => $oldQuantity,
+                    'usage' => 0,
+                    'stock_end' => $newQuantity,
+                    'restocked' => false,
+                    'restock_qty' => 0,
+                ]
+            );
+
+            // Update restock information
+            $usage->restocked = true;
+            $usage->restock_qty += $restockQty;
+            $usage->stock_end = $newQuantity;
+            
+            // Set stock_start if it's null (first restock in this period)
+            if ($usage->stock_start === null) {
+                $usage->stock_start = $oldQuantity;
+            }
+            
+            $usage->save();
+
+            \Log::info("Tracked restock for item {$item->id} in {$period}: {$restockQty} units restocked");
+        } catch (\Exception $e) {
+            \Log::error("Failed to track item restock: " . $e->getMessage());
+            // Don't fail the request if tracking fails
         }
     }
 }

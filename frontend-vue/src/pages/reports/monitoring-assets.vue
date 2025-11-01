@@ -424,6 +424,58 @@ const printReport = () => {
 const goBack = () => {
   router.back()
 }
+
+// Export to Excel
+const exportToExcel = async () => {
+  try {
+    // Prepare export parameters
+    const params = new URLSearchParams()
+    
+    if (selectedCategory.value) {
+      params.append('category', selectedCategory.value)
+    }
+    
+    if (selectedLocation.value && selectedLocation.value !== 'all') {
+      params.append('location', selectedLocation.value)
+    }
+    
+    // If we have filtered items (from search/filters), send them for export
+    // Otherwise, backend will fetch all items based on filters
+    if (filteredItems.value.length > 0 && filteredItems.value.length !== inventoryItems.value.length) {
+      // Send filtered items
+      params.append('items', JSON.stringify(filteredItems.value))
+    }
+    
+    // Build the export URL
+    const exportUrl = `/items/export/monitoring-assets?${params.toString()}`
+    
+    // Use axios with blob response type for Excel downloads
+    const response = await axiosClient.get(exportUrl, {
+      responseType: 'blob',
+      headers: {
+        'Accept': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      }
+    })
+    
+    // Create blob URL and trigger download
+    const blob = new Blob([response.data], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    })
+    const url = window.URL.createObjectURL(blob)
+    const downloadLink = document.createElement('a')
+    downloadLink.href = url
+    downloadLink.download = `Monitoring_Assets_${new Date().toISOString().split('T')[0]}.xlsx`
+    document.body.appendChild(downloadLink)
+    downloadLink.click()
+    document.body.removeChild(downloadLink)
+    window.URL.revokeObjectURL(url)
+    
+    console.log('Excel export completed successfully')
+  } catch (error) {
+    console.error('Error exporting to Excel:', error)
+    alert('Failed to export to Excel. Please try again.')
+  }
+}
 </script>
 
 <template>
@@ -441,6 +493,10 @@ const goBack = () => {
         <h1 class="text-xl sm:text-2xl font-semibold text-green-700 dark:text-green-400">Asset Monitoring Report</h1>
       </div>
       <div class="flex items-center gap-2">
+        <button @click="exportToExcel" class="btn-primary flex items-center bg-blue-600 hover:bg-blue-700">
+          <span class="material-icons-outlined text-lg mr-1">file_download</span>
+          <span>Export Excel</span>
+        </button>
         <button @click="printReport" class="btn-primary flex items-center">
           <span class="material-icons-outlined text-lg mr-1">print</span>
           <span>Print Report</span>
