@@ -22,7 +22,8 @@ class UserResource extends JsonResource
             'role' => $this->role,
             'image' => asset('storage/' . $this->image) ?? null,
             'location' => $this->location ? $this->location->location : null,
-            'password' =>  $this->password
+            'password' =>  $this->password,
+            'created_at' => $this->created_at ? $this->created_at->toISOString() : null
         ];
     }
 }

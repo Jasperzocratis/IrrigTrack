@@ -70,5 +70,9 @@ class Item extends Model
         return $this->belongsTo(User::class, 'user_id', 'id');
     }
 
+    public function notifications()
+    {
+        return $this->hasMany(Notification::class, 'item_id', 'id');
+    }
 
 }

@@ -262,6 +262,14 @@ const closeReassignModal = () => {
 
 // Edit user function is now handled by router-link
 
+// Safe date formatting function
+const formatDate = (dateString) => {
+  if (!dateString) return 'N/A'
+  const date = new Date(dateString)
+  if (isNaN(date.getTime())) return 'N/A'
+  return date.toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' })
+}
+
 const filteredAdminAccounts = computed(() => {
   const query = debouncedAdminSearchQuery.value?.toLowerCase().trim()
   if (!query) return adminAccounts.value
@@ -474,7 +482,7 @@ onMounted(() => {
                       </div>
                     </td>
                     <td class="px-6 py-4 text-gray-900 dark:text-white">{{ index+1 }}</td>
-                    <td class="px-6 py-4 text-gray-900 dark:text-white">{{ new Date(account.created_at).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' }) }}</td>
+                    <td class="px-6 py-4 text-gray-900 dark:text-white">{{ formatDate(account.created_at) }}</td>
                     <td class="px-6 py-4 text-gray-900 dark:text-white">{{ account.location || 'N/A' }}</td>
                     <td class="px-6 py-4">
                       <div class="flex gap-2">
@@ -597,7 +605,7 @@ onMounted(() => {
                       </div>
                     </td>
                     <td class="px-6 py-4 text-gray-900 dark:text-white">{{ index+1 }}</td>
-                    <td class="px-6 py-4 text-gray-900 dark:text-white">{{ new Date(account.created_at).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' }) }}</td>
+                    <td class="px-6 py-4 text-gray-900 dark:text-white">{{ formatDate(account.created_at) }}</td>
                     <td class="px-6 py-4 text-gray-900 dark:text-white">{{ account.location || 'N/A' }}</td>
                     <td class="px-6 py-4">
                       <div class="flex gap-2">
