@@ -20,10 +20,11 @@ class UserResource extends JsonResource
             'username' => $this->username,
             'email' => $this->email,
             'role' => $this->role,
-            'image' => asset('storage/' . $this->image) ?? null,
+            'image' => $this->image ? asset('storage/' . $this->image) : null,
+            'location_id' => $this->location_id,
             'location' => $this->location ? $this->location->location : null,
-            'password' =>  $this->password,
-            'created_at' => $this->created_at ? $this->created_at->toISOString() : null
+            'created_at' => $this->created_at ? $this->created_at->toISOString() : null,
+            'updated_at' => $this->updated_at ? $this->updated_at->toISOString() : null
         ];
     }
 }

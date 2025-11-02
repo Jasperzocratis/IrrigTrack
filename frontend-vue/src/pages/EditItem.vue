@@ -34,7 +34,9 @@ const editForm = ref({
   location_id: '',
   condition_id: '',
   condition_number_id: '',
-  user_id: ''
+  issuedTo: '', // Changed from user_id to issuedTo to match personnel selection
+  user_id: '', // Keep for backend submission
+  maintenance_reason: ''
 })
 
 const editLoading = ref(false)
@@ -53,30 +55,64 @@ onMounted(async () => {
   console.log('EditItem component mounted with UUID:', itemId.value)
   
   try {
+    // Fetch dropdown data - fetch all items (high per_page) to get complete lists
     await Promise.all([
-      fetchitems(),
-      fetchcategories(),
-      fetchLocations(),
+      fetchcategories(1, 1000), // Fetch all categories
+      fetchLocations(1, 1000), // Fetch all locations
       fetchconditions(),
       fetchcondition_numbers(),
       fetchusers()
     ])
     
-    console.log('Data fetched successfully. Items count:', items.value.length)
+    console.log('Categories loaded:', categories.value.length)
+    console.log('Locations loaded:', locations.value.length)
     
-    // Find and populate the item data
-    if (itemId.value) {
-      const item = items.value.find(item => item.uuid === itemId.value)
-      if (item) {
-        console.log('Found item:', item)
-        populateForm(item)
-      } else {
-        console.error('Item not found with UUID:', itemId.value)
-        console.log('Available items:', items.value.map(i => ({ uuid: i.uuid, unit: i.unit })))
-      }
+    // Fetch single item
+    const itemResponse = await axiosClient.get(`/items/check/${itemId.value}`)
+    console.log('Item response:', itemResponse.data)
+    
+    // Extract item from response
+    let item = null
+    if (itemResponse.data && itemResponse.data.item) {
+      item = itemResponse.data.item
+      console.log('Found item:', item)
+    } else if (itemResponse.data && itemResponse.data.data) {
+      // Handle case where response structure is different
+      item = itemResponse.data.data
+      console.log('Found item:', item)
+    } else {
+      console.error('Item not found with UUID:', itemId.value)
+      console.log('Response:', itemResponse.data)
+    }
+    
+    if (item) {
+      populateForm(item)
     }
   } catch (error) {
     console.error('Error fetching data:', error)
+    if (error.response?.status === 404) {
+      // Item not found, try fallback to fetching all items
+      try {
+        await Promise.all([
+          fetchitems(),
+          fetchcategories(1, 1000),
+          fetchLocations(1, 1000),
+          fetchconditions(),
+          fetchcondition_numbers(),
+          fetchusers()
+        ])
+        
+        const item = items.value.find(item => item.uuid === itemId.value)
+        if (item) {
+          console.log('Found item in fallback:', item)
+          populateForm(item)
+        } else {
+          console.error('Item not found with UUID:', itemId.value)
+        }
+      } catch (fallbackError) {
+        console.error('Fallback fetch also failed:', fallbackError)
+      }
+    }
   } finally {
     dataLoading.value = false
   }
@@ -84,20 +120,98 @@ onMounted(async () => {
 
 // Populate form with item data
 const populateForm = (item) => {
+  // Format date for HTML date input (YYYY-MM-DD)
+  let formattedDate = ''
+  if (item.date_acquired) {
+    try {
+      // Handle different date formats
+      const dateStr = item.date_acquired
+      if (dateStr.includes('T')) {
+        // ISO format: 2025-09-20T00:00:00.000000Z
+        formattedDate = dateStr.split('T')[0]
+      } else if (dateStr.includes('/')) {
+        // Format: 09/20/2025
+        const [month, day, year] = dateStr.split('/')
+        formattedDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+      } else if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        // Already in YYYY-MM-DD format
+        formattedDate = dateStr
+      } else {
+        // Try parsing as Date object
+        const date = new Date(dateStr)
+        if (!isNaN(date.getTime())) {
+          formattedDate = date.toISOString().split('T')[0]
+        }
+      }
+    } catch (e) {
+      console.warn('Error formatting date:', e)
+    }
+  }
+  
+  // Handle numeric IDs - ensure they're numbers for select comparison
+  const toNumber = (val) => {
+    if (val === null || val === undefined || val === '') return null
+    const num = Number(val)
+    return isNaN(num) ? null : num
+  }
+  
+  // Get category and location IDs, handling various data structures
+  const categoryId = toNumber(item.category_id || item.category_id || (item.category && (item.category.id || item.category.category_id)))
+  const locationId = toNumber(item.location_id || item.location_id || (item.location && (item.location.id || item.location.location_id)))
+  const userId = toNumber(item.user_id)
+  
+  // Find the location that matches the item's location_id to set issuedTo
+  // If the item's location has personnel, use that location's ID
+  let issuedToValue = null
+  if (locationId) {
+    const itemLocation = locations.value.find(loc => 
+      (loc.id || loc.location_id) == locationId
+    )
+    // If the item's location has personnel, use that location for issuedTo
+    if (itemLocation && itemLocation.personnel && itemLocation.personnel.trim() !== '') {
+      issuedToValue = locationId
+    } else {
+      // Try to find a location with personnel that matches the user
+      if (userId) {
+        const itemUser = users.value.find(u => (u.id || u.user?.id) == userId)
+        if (itemUser && itemUser.fullname) {
+          // Find location with matching personnel
+          const matchingLocation = locations.value.find(loc => {
+            if (!loc.personnel) return false
+            const personnelLower = loc.personnel.toLowerCase().trim()
+            const userFullnameLower = itemUser.fullname.toLowerCase().trim()
+            return personnelLower === userFullnameLower ||
+                   personnelLower.includes(userFullnameLower) ||
+                   userFullnameLower.includes(personnelLower)
+          })
+          if (matchingLocation) {
+            issuedToValue = matchingLocation.id || matchingLocation.location_id
+          }
+        }
+      }
+    }
+  }
+  
   editForm.value = {
     unit: item.unit || '',
     description: item.description || '',
-    category_id: item.category_id || '',
-    quantity: item.quantity || '',
+    category_id: categoryId,
+    quantity: toNumber(item.quantity) || 0,
     pac: item.pac || '',
     unit_value: item.unit_value || '',
-    date_acquired: item.date_acquired || '',
+    date_acquired: formattedDate || '',
     po_number: item.po_number || '',
-    location_id: item.location_id || '',
-    condition_id: item.condition_id || '',
-    condition_number_id: item.condition_number_id || '',
-    user_id: item.user_id || ''
+    location_id: locationId,
+    condition_id: toNumber(item.condition_id),
+    condition_number_id: toNumber(item.condition_number_id),
+    issuedTo: issuedToValue,
+    user_id: userId, // Keep original user_id for reference
+    maintenance_reason: item.maintenance_reason || ''
   }
+  
+  console.log('Form populated:', editForm.value)
+  console.log('Category ID:', categoryId, 'Available categories:', categories.value.map(c => ({ id: c.id, category: c.category })))
+  console.log('Location ID:', locationId, 'Available locations:', locations.value.map(l => ({ id: l.id, location: l.location })))
 }
 
 // Get current item for display
@@ -109,10 +223,53 @@ const currentItem = computed(() => {
 const saveEditedItem = async () => {
   if (!itemId.value) return
   
+  // Validate maintenance reason if On Maintenance is selected
+  if (isOnMaintenance.value && !editForm.value.maintenance_reason?.trim()) {
+    successMessage.value = 'Please provide a maintenance reason when condition is set to "On Maintenance"'
+    successModalType.value = 'error'
+    showSuccessModal.value = true
+    return
+  }
+  
   try {
     editLoading.value = true
     
-    const response = await axiosClient.put(`/items/${itemId.value}`, editForm.value)
+    // Map issuedTo (location ID) back to user_id
+    let userIdToSend = editForm.value.user_id // Keep original as fallback
+    
+    if (editForm.value.issuedTo) {
+      const selectedLocation = locations.value.find(loc => 
+        (loc.id || loc.location_id) == editForm.value.issuedTo
+      )
+      
+      if (selectedLocation && selectedLocation.personnel) {
+        // Try to find a user that matches the personnel name
+        const matchingUser = users.value.find(user => {
+          const personnelLower = selectedLocation.personnel.toLowerCase().trim()
+          const userFullnameLower = (user.fullname || '').toLowerCase().trim()
+          return userFullnameLower === personnelLower || 
+                 userFullnameLower.includes(personnelLower) ||
+                 personnelLower.includes(userFullnameLower)
+        })
+        if (matchingUser) {
+          userIdToSend = matchingUser.id || matchingUser.user?.id
+        }
+      }
+    }
+    
+    // Only include maintenance_reason if condition is On Maintenance
+    const payload = { 
+      ...editForm.value,
+      user_id: userIdToSend // Override with mapped user_id
+    }
+    // Remove issuedTo from payload as backend doesn't need it
+    delete payload.issuedTo
+    
+    if (!isOnMaintenance.value) {
+      delete payload.maintenance_reason
+    }
+    
+    const response = await axiosClient.put(`/items/${itemId.value}`, payload)
     
     console.log('Update response:', response.data)
     
@@ -158,6 +315,20 @@ const formatDateForInput = (dateString) => {
   const date = new Date(dateString)
   return date.toISOString().split('T')[0]
 }
+
+// Check if "On Maintenance" condition is selected
+const isOnMaintenance = computed(() => {
+  if (!editForm.value.condition_id) return false
+  const selectedCondition = conditions.value.find(c => c.id == editForm.value.condition_id)
+  return selectedCondition && (selectedCondition.condition === 'On Maintenance' || selectedCondition.condition === 'Under Maintenance')
+})
+
+// Get locations that have personnel assigned
+const locationsWithPersonnel = computed(() => {
+  return locations.value.filter(location => 
+    location.personnel && location.personnel.trim() !== ''
+  )
+})
 </script>
 
 <template>
@@ -204,7 +375,7 @@ const formatDateForInput = (dateString) => {
     </div>
 
     <!-- Form -->
-    <div v-else-if="currentItem" class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-6">
+    <div v-else-if="itemId" class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-6">
       <form @submit.prevent="saveEditedItem" class="space-y-4 sm:space-y-6">
         <!-- Row 1: Article and Category -->
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
@@ -221,15 +392,16 @@ const formatDateForInput = (dateString) => {
           <div>
             <label class="block text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Category *</label>
             <select
-              v-model="editForm.category_id"
+              v-model.number="editForm.category_id"
               required
               class="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-green-500"
             >
-              <option value="">Select category</option>
-              <option v-for="category in categories" :key="category.id" :value="category.id">
+              <option :value="null">Select category</option>
+              <option v-for="category in categories" :key="category.id" :value="Number(category.id)">
                 {{ category.category }}
               </option>
             </select>
+            <p v-if="categories.length === 0" class="mt-1 text-xs text-yellow-600">Loading categories...</p>
           </div>
         </div>
         
@@ -315,29 +487,45 @@ const formatDateForInput = (dateString) => {
         <!-- Row 5: Location and Condition -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Location *</label>
+            <label class="block text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Location *</label>
             <select
-              v-model="editForm.location_id"
+              v-model.number="editForm.location_id"
               required
-              class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+              class="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-green-500"
             >
-              <option value="">Select location</option>
-              <option v-for="location in locations" :key="location.id" :value="location.id">
+              <option :value="null">Select location</option>
+              <option v-for="location in locations" :key="location.id" :value="Number(location.id)">
                 {{ location.location }}
               </option>
             </select>
+            <p v-if="locations.length === 0" class="mt-1 text-xs text-yellow-600">Loading locations...</p>
           </div>
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Condition</label>
+            <label class="block text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Condition</label>
             <select
               v-model="editForm.condition_id"
-              class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+              class="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-green-500"
             >
               <option value="">Select condition</option>
               <option v-for="condition in conditions" :key="condition.id" :value="condition.id">
                 {{ condition.condition }}
               </option>
             </select>
+          </div>
+        </div>
+        
+        <!-- Maintenance Reason Field (shown when "On Maintenance" is selected) -->
+        <div v-if="isOnMaintenance" class="grid grid-cols-1 gap-4">
+          <div>
+            <label class="block text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Maintenance Reason *</label>
+            <textarea
+              v-model="editForm.maintenance_reason"
+              required
+              rows="3"
+              class="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-green-500"
+              placeholder="Enter reason for maintenance"
+            ></textarea>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Please provide a reason why this item is under maintenance</p>
           </div>
         </div>
         
@@ -358,15 +546,18 @@ const formatDateForInput = (dateString) => {
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">Issued To *</label>
             <select
-              v-model="editForm.user_id"
+              v-model="editForm.issuedTo"
               required
               class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
             >
-              <option value="">Select user</option>
-              <option v-for="user in users" :key="user.id" :value="user.id">
-                {{ user.fullname }}
+              <option :value="null">Select Personnel</option>
+              <option v-for="location in locationsWithPersonnel" 
+                  :key="location.id || location.location_id" 
+                  :value="location.id || location.location_id">
+                {{ location.personnel }}
               </option>
             </select>
+            <p v-if="locationsWithPersonnel.length === 0" class="mt-1 text-xs text-yellow-600">No personnel assigned to any location. Please assign personnel in Location Management first.</p>
           </div>
         </div>
         

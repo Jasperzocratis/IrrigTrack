@@ -137,6 +137,14 @@ const goToAddItem = () => {
   router.push('/add-item')
 }
 
+const goToCategories = () => {
+  router.push('/categories')
+}
+
+const goToLocations = () => {
+  router.push('/locations')
+}
+
 const goToAddSupply = () => {
   router.push('/inventory/add').catch(err => {
     console.error('Navigation error:', err)
@@ -499,11 +507,19 @@ const closeSuccessModal = () => {
 </script>
 
 <template>
-  <div class="p-3 sm:p-4 md:p-6 space-y-4 sm:space-y-6">
+  <div class="p-4 sm:p-6 md:p-8 space-y-5 sm:space-y-6">
     <!-- Header -->
-    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-0">
+    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 sm:gap-0 mb-4">
       <h1 class="text-xl sm:text-2xl font-semibold text-green-700">Inventory</h1>
-      <div class="flex items-center gap-2 w-full sm:w-auto">
+      <div class="flex items-center gap-3 w-full sm:w-auto">
+        <button @click="goToCategories" class="btn-secondary flex-1 sm:flex-auto justify-center">
+          <span class="material-icons-outlined text-lg mr-1">category</span>
+          <span>Categories</span>
+        </button>
+        <button @click="goToLocations" class="btn-secondary flex-1 sm:flex-auto justify-center">
+          <span class="material-icons-outlined text-lg mr-1">location_on</span>
+          <span>Locations</span>
+        </button>
         <button @click="goToAddItem" class="btn-primary flex-1 sm:flex-auto justify-center">
           <span class="material-icons-outlined text-lg mr-1">add</span>
           <span>Add New</span>
@@ -511,8 +527,8 @@ const closeSuccessModal = () => {
       </div>
     </div>
 
-    <!-- Search and Filter Bar -->
-    <div class="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 sm:gap-0">
+    <!-- Search Bar -->
+    <div class="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 sm:gap-0 mb-5">
       <div class="relative w-full sm:w-96">
         <div class="relative">
           <span class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400">
@@ -525,15 +541,6 @@ const closeSuccessModal = () => {
             class="w-full pl-10 pr-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
           >
         </div>
-      </div>
-      <div class="flex items-center gap-2 w-full sm:w-auto">
-        <button class="btn-secondary flex-1 sm:flex-auto justify-center">
-          <span class="material-icons-outlined text-lg mr-1">filter_alt</span>
-          <span>Filter</span>
-        </button>
-        <button class="btn-secondary flex-1 sm:flex-auto justify-center">
-          <span>Articles</span>
-        </button>
       </div>
     </div>
 

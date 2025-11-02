@@ -6,6 +6,8 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\V1\RegisterRequest;
+use App\Http\Resources\V1\UserResource;
 use App\Services\V1\AuthService;
 use App\Traits\LogsActivity;
 
@@ -23,40 +25,61 @@ class AuthController extends Controller
     }
 
 
-    public function register(Request $request)
+    /**
+     * Register a new user
+     * 
+     * @param RegisterRequest $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function register(RegisterRequest $request)
     {
         try {
-            // Validate the request
-            $validated = $request->validate([
-                'fullname'     => 'required|string|max:255',
-                'email'    => 'required|string|email|max:255|unique:users',
-                'location_id' => 'required|exists:locations,id',
-                'password' => 'required|string|min:8|confirmed',
-                'role'     => 'in:admin,user',
-                'image' =>'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:5120'
-            ]);
+            // Get validated data
+            $validated = $request->validated();
             
-            // Add username to validated data (use email as username)
+            // Set username to email if not provided
+            if (empty($validated['username'])) {
             $validated['username'] = $validated['email'];
+            }
             
+            // Set default role to 'user' if not provided
+            if (empty($validated['role'])) {
+                $validated['role'] = 'user';
+            }
+            
+            // Register the user
             $user = $this->authService->register($validated);
 
-            // Log user registration (only if user is authenticated)
+            // Log user registration (only if admin is creating the user)
             if ($request->user()) {
                 $this->logUserActivity($request, 'Created', $user->fullname, $user->id);
+            } else {
+                // Log public registration
+                $this->logAuthActivity($request, 'User Registered', $user->email, true);
             }
 
+            // Load relationships for resource
+            $user->load('location');
+
+            // Create token for the newly registered user
+            $token = $user->createToken($user->username)->plainTextToken;
+
             return response()->json([
-                'message' => 'New user registered successfully.',
-                'user' => $user,
+                'success' => true,
+                'message' => 'User registered successfully.',
+                'user' => new UserResource($user),
+                'token' => $token,
             ], 201);
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
+                'success' => false,
                 'message' => 'Validation failed',
                 'errors' => $e->errors()
             ], 422);
         } catch (\Exception $e) {
+            \Log::error('Registration error: ' . $e->getMessage());
             return response()->json([
+                'success' => false,
                 'message' => 'Server error: ' . $e->getMessage()
             ], 500);
         }

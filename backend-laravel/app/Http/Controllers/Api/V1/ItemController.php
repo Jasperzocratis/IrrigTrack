@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Models\BorrowTransaction;
 use App\Models\Item;
+use App\Models\MaintenanceRecord;
+use App\Models\Condition;
 use App\Http\Requests\V1\StoreItemRequest;
 use App\Http\Requests\V1\UpdateItemRequest;
 use App\Http\Resources\V1\ItemResource;
@@ -15,6 +17,7 @@ use App\Traits\LogsActivity;
 use App\Jobs\CheckLowStockJob;
 use App\Models\ItemUsage;
 use App\Exports\MonitoringAssetsExport;
+use App\Exports\ServiceableItemsExport;
 use Maatwebsite\Excel\Facades\Excel;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -29,8 +32,15 @@ class ItemController extends Controller
     public function index()
     {
         try {
-            // Get all non-deleted items with QR code relationship
-            $items = Item::with('qrCode')->get();
+            // Get all non-deleted items with all necessary relationships
+            $items = Item::with([
+                'qrCode',
+                'category',
+                'location',
+                'condition',
+                'condition_number',
+                'user'
+            ])->get();
             return new ItemCollection($items);
         } catch (\Exception $e) {
             \Log::error('Error fetching items: ' . $e->getMessage());
@@ -47,8 +57,15 @@ class ItemController extends Controller
     public function getActiveItems()
     {
         try {
-            // Get all items with QR code relationship
-            $items = Item::with('qrCode')->get();
+            // Get all items with all necessary relationships
+            $items = Item::with([
+                'qrCode',
+                'category',
+                'location',
+                'condition',
+                'condition_number',
+                'user'
+            ])->get();
             
             return response()->json([
                 'message' => 'Active items retrieved successfully',
@@ -119,7 +136,14 @@ class ItemController extends Controller
      */
     public function show(Item $item)
     {
-        $item->load('qrCode');
+        $item->load([
+            'qrCode',
+            'category',
+            'location',
+            'condition',
+            'condition_number',
+            'user'
+        ]);
         return new ItemResource($item);
     }
 
@@ -133,6 +157,10 @@ class ItemController extends Controller
         // Store old quantity BEFORE updating (for usage tracking)
         $oldQuantity = $item->quantity;
         
+        // Store old condition BEFORE updating (for maintenance record)
+        $oldConditionId = $item->condition_id;
+        $maintenanceReason = $request->input('maintenance_reason');
+        
         // Update the item with validated data
         $item->update($request->validated());
         
@@ -140,6 +168,48 @@ class ItemController extends Controller
         $image = $request->file('image_path');
         if ($image) {
             $itemService->handleImageUpload($item, $image);
+        }
+        
+        // Refresh item to get latest data after update
+        $item->refresh();
+        
+        // Create maintenance record if condition changed to "On Maintenance"
+        if ($request->has('condition_id') && $oldConditionId != $item->condition_id) {
+            $onMaintenanceCondition = Condition::where('condition', 'On Maintenance')
+                ->orWhere('condition', 'Under Maintenance')
+                ->first();
+            
+            if ($onMaintenanceCondition && $item->condition_id == $onMaintenanceCondition->id && $maintenanceReason) {
+                try {
+                    // Find reason enum value or default to 'Other'
+                    $reasonEnum = 'Other'; // Default reason
+                    $reasonText = strtolower($maintenanceReason);
+                    
+                    if (strpos($reasonText, 'wet') !== false) {
+                        $reasonEnum = 'Wet';
+                    } elseif (strpos($reasonText, 'overheat') !== false || strpos($reasonText, 'over heat') !== false) {
+                        $reasonEnum = 'Overheat';
+                    } elseif (strpos($reasonText, 'wear') !== false) {
+                        $reasonEnum = 'Wear';
+                    } elseif (strpos($reasonText, 'electrical') !== false) {
+                        $reasonEnum = 'Electrical';
+                    }
+                    
+                    MaintenanceRecord::create([
+                        'item_id' => $item->id,
+                        'maintenance_date' => now()->toDateString(),
+                        'reason' => $reasonEnum,
+                        'condition_before_id' => $oldConditionId,
+                        'condition_after_id' => $item->condition_id,
+                        'technician_notes' => $maintenanceReason
+                    ]);
+                    
+                    \Log::info("Maintenance record created for item {$item->id} with reason: {$maintenanceReason}");
+                } catch (\Exception $e) {
+                    \Log::error("Failed to create maintenance record: " . $e->getMessage());
+                    // Don't fail the request if maintenance record creation fails
+                }
+            }
         }
         
         // Log item update
@@ -160,9 +230,6 @@ class ItemController extends Controller
             }
         }
         
-        // Refresh item to get latest data after update
-        $item->refresh();
-        
         // Execute job immediately to check for low stock (especially when quantity changes)
         try {
             $job = new CheckLowStockJob();
@@ -170,6 +237,17 @@ class ItemController extends Controller
         } catch (\Exception $e) {
             \Log::error("CheckLowStockJob failed: " . $e->getMessage());
         }
+        
+        // Reload item with all relationships before returning
+        $item->refresh();
+        $item->load([
+            'qrCode',
+            'category',
+            'location',
+            'condition',
+            'condition_number',
+            'user'
+        ]);
         
         // Return the updated item
         return new ItemResource($item);
@@ -229,7 +307,14 @@ class ItemController extends Controller
     public function checkItem($uuid)
     {
         try {
-            $item = Item::where('uuid', $uuid)->firstOrFail();
+            $item = Item::with([
+                'qrCode',
+                'category',
+                'location',
+                'condition',
+                'condition_number',
+                'user'
+            ])->where('uuid', $uuid)->firstOrFail();
             return response()->json([
                 'message' => 'Item found',
                 'status' => 'success',
@@ -444,6 +529,41 @@ class ItemController extends Controller
             ], 500);
         }
 }
+
+    /**
+     * Export serviceable items to Excel
+     */
+    public function exportServiceableItems(Request $request)
+    {
+        try {
+            $itemsParam = $request->input('items'); // Optional: JSON string of items from frontend
+
+            $fileName = 'Serviceable_Items_' . date('Y-m-d_His') . '.xlsx';
+            
+            // Decode items if provided as JSON string
+            $items = null;
+            if ($itemsParam) {
+                $decodedItems = is_string($itemsParam) ? json_decode($itemsParam, true) : $itemsParam;
+                if (is_array($decodedItems) && count($decodedItems) > 0) {
+                    $items = $decodedItems;
+                }
+            }
+            
+            if ($items) {
+                // Export filtered items from frontend
+                return Excel::download(new ServiceableItemsExport($items), $fileName);
+            } else {
+                // Export all items
+                return Excel::download(new ServiceableItemsExport(null), $fileName);
+            }
+        } catch (\Exception $e) {
+            \Log::error('Error exporting serviceable items: ' . $e->getMessage());
+            return response()->json([
+                'message' => 'Failed to export serviceable items: ' . $e->getMessage(),
+                'status' => 'error'
+            ], 500);
+        }
+    }
 
     /**
      * Validate and update QR code for an item

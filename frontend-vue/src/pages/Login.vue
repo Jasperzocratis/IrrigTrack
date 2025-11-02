@@ -167,14 +167,24 @@
                 Continue with Google
               </button>
 
-              <!-- Forgot Password Link -->
-              <div class="mt-6 text-center">
-                <router-link
-                  to="/forgot-password"
-                  class="text-sm text-green-600 hover:text-green-500"
-                >
-                  Forgot your password?
-                </router-link>
+              <!-- Sign Up and Forgot Password Links -->
+              <div class="mt-6 text-center space-y-2">
+                <div>
+                  <router-link
+                    to="/signup"
+                    class="text-sm text-green-600 hover:text-green-500 font-medium"
+                  >
+                    Don't have an account? Sign up
+                  </router-link>
+                </div>
+                <div>
+                  <router-link
+                    to="/forgot-password"
+                    class="text-sm text-green-600 hover:text-green-500"
+                  >
+                    Forgot your password?
+                  </router-link>
+                </div>
               </div>
             </div>
           </div>

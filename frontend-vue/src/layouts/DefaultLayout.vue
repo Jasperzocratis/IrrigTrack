@@ -47,6 +47,8 @@ const currentDate = ref(new Date())
 const navigation = [
   { name: 'Dashboard', path: '/dashboard', icon: 'dashboard' },
   { name: 'Inventory', path: '/inventory', icon: 'inventory' },
+  { name: 'Categories', path: '/categories', icon: 'category' },
+  { name: 'Locations', path: '/locations', icon: 'location_on' },
   { name: 'Admins', path: '/admin', icon: 'people' },
   { name: 'Analytics', path: '/analytics', icon: 'analytics' },
   { name: 'Profile', path: '/profile', icon: 'person' },

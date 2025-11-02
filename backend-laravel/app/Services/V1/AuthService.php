@@ -12,19 +12,29 @@ class AuthService
 {
     public function register(array $data): User
     {
-        $img = $data['image'] ?? null;
-        if($img === null){
-            $imagePath = 'images/default.png';
-        } else {
-            $imagePath = $img->store('images', 'public');
+        // Handle image upload
+        $imagePath = 'images/default.png'; // Default image
+        if (isset($data['image']) && $data['image'] !== null) {
+            try {
+                $imagePath = $data['image']->store('images', 'public');
+            } catch (\Exception $e) {
+                \Log::warning('Image upload failed during registration: ' . $e->getMessage());
+                // Continue with default image if upload fails
+            }
         }
+        
+        // Use username if provided, otherwise use email
+        $username = $data['username'] ?? $data['email'];
+        
+        // Set default role if not provided
+        $role = $data['role'] ?? 'user';
         
         return User::create([
             'fullname' => $data['fullname'],
-            'username' => $data['email'], // Use email as username
+            'username' => $username,
             'email' => $data['email'],
             'location_id' => $data['location_id'],
-            'role' => $data['role'],
+            'role' => $role,
             'image' => $imagePath,
             'password' => Hash::make($data['password']),
         ]);

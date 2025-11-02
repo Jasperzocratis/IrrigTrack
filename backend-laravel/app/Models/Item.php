@@ -14,7 +14,7 @@ class Item extends Model
 
     protected $fillable = [
         'uuid', 'unit', 'description', 'pac', 'unit_value', 'date_acquired', 'po_number', 'category_id', 'location_id',
-        'condition_id', 'condition_number_id', 'user_id', 'image_path', 'quantity', 'deletion_reason'
+        'condition_id', 'condition_number_id', 'user_id', 'image_path', 'quantity', 'deletion_reason', 'maintenance_reason'
     ];
 
      protected static function booted()
@@ -78,5 +78,10 @@ class Item extends Model
     public function usages()
     {
         return $this->hasMany(ItemUsage::class, 'item_id', 'id');
+    }
+
+    public function maintenance_records()
+    {
+        return $this->hasMany(MaintenanceRecord::class, 'item_id', 'id');
     }
 }

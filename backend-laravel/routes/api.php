@@ -34,8 +34,14 @@ Route::get('/users/deleted', [UserController::class, 'getDeletedUsers']);
 Route::post('/users/{id}/restore', [UserController::class, 'restoreUser']);
 Route::delete('/users/{id}/force-delete', [UserController::class, 'forceDeleteUser']);
 Route::get('/locations', [LocationController::class, 'index']);
+Route::post('/locations', [LocationController::class, 'store']);
+Route::put('/locations/{id}', [LocationController::class, 'update']);
+Route::delete('/locations/{id}', [LocationController::class, 'destroy']);
 Route::get('/conditions', [ConditionController::class, 'index']);
 Route::get('/categories', [CategoryController::class, 'index']);
+Route::post('/categories', [CategoryController::class, 'store']);
+Route::put('/categories/{id}', [CategoryController::class, 'update']);
+Route::delete('/categories/{id}', [CategoryController::class, 'destroy']);
 Route::get('/condition_numbers', [ConditionNumberController::class, 'index']);
 Route::get('/items/active', [ItemController::class, 'getActiveItems']);
 Route::get('/items/deleted', [ItemController::class, 'getDeletedItems']);
@@ -52,6 +58,7 @@ Route::put('/notifications/{id}/read', [NotificationController::class, 'markAsRe
 Route::get('/usage/quarterly', [UsageController::class, 'getQuarterlyUsage']);
 Route::get('/usage/forecast-data', [UsageController::class, 'getForecastData']);
 Route::get('/items/export/monitoring-assets', [ItemController::class, 'exportMonitoringAssets']);
+Route::get('/items/export/serviceable-items', [ItemController::class, 'exportServiceableItems']);
 
 // QR Code Validation endpoint outside v1 group
 Route::post('/items/{uuid}/validate-qr', [ItemController::class, 'validateQRCode']);
@@ -113,5 +120,6 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
 
     // ITEM EXPORTS
     Route::get('items/export/monitoring-assets', [ItemController::class, 'exportMonitoringAssets']);
+    Route::get('items/export/serviceable-items', [ItemController::class, 'exportServiceableItems']);
 
 });

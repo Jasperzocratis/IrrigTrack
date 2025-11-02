@@ -123,6 +123,95 @@ const statusCounts = computed(() => {
 })
 
 // Print report
+// Export to Excel
+const exportToExcel = async () => {
+  try {
+    // Prepare export parameters
+    const params = new URLSearchParams()
+    
+    // Always send filtered items (from search/status filters) if available
+    // Otherwise send all items from inventoryItems
+    const itemsToExport = filteredItems.value.length > 0 
+      ? filteredItems.value 
+      : inventoryItems.value
+    
+    // Convert to format expected by backend
+    const exportData = itemsToExport.map(item => ({
+      unit: item.article || item.unit || '',
+      category: item.category || '',
+      description: item.description || '',
+      pac: item.propertyAccountCode || item.pac || '',
+      unit_value: item.unitValue || item.unit_value || '',
+      date_acquired: item.dateAcquired || item.date_acquired || '',
+      location: item.location || '',
+      condition: item.condition || '',
+      issued_to: item.issuedTo || item.issued_to || 'Not Assigned',
+      quantity: item.quantity || 0,
+      // Include serviceable status
+      serviceableStatus: item.serviceableStatus || ''
+    }))
+    
+    params.append('items', JSON.stringify(exportData))
+    
+    // Build the export URL
+    const exportUrl = `/items/export/serviceable-items?${params.toString()}`
+    
+    // Use axios with blob response type for Excel downloads
+    const response = await axiosClient.get(exportUrl, {
+      responseType: 'blob',
+      headers: {
+        'Accept': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      }
+    })
+    
+    // Check if response is actually an error (blob might contain error JSON)
+    const contentType = response.headers['content-type'] || ''
+    if (contentType.includes('application/json')) {
+      const text = await response.data.text()
+      try {
+        const errorData = JSON.parse(text)
+        throw new Error(errorData.message || 'Export failed')
+      } catch (parseError) {
+        throw new Error('Server returned an error: ' + text)
+      }
+    }
+    
+    // Verify it's actually an Excel file
+    if (!contentType.includes('spreadsheet') && !contentType.includes('excel')) {
+      const text = await response.data.text()
+      throw new Error('Unexpected response type. Server may have returned an error.')
+    }
+    
+    // Create blob URL and trigger download
+    const blob = new Blob([response.data], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    })
+    const url = window.URL.createObjectURL(blob)
+    const downloadLink = document.createElement('a')
+    downloadLink.href = url
+    downloadLink.download = `Serviceable_Items_${new Date().toISOString().split('T')[0]}.xlsx`
+    document.body.appendChild(downloadLink)
+    downloadLink.click()
+    document.body.removeChild(downloadLink)
+    window.URL.revokeObjectURL(url)
+    
+    console.log('Excel export completed successfully')
+  } catch (error) {
+    console.error('Error exporting to Excel:', error)
+    console.error('Error details:', {
+      message: error.message,
+      response: error.response,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      url: error.config?.url
+    })
+    const errorMessage = error.response?.status === 404 
+      ? 'Export endpoint not found. Please check if the server is running and routes are registered.'
+      : error.response?.data?.message || error.message || 'Failed to export to Excel. Please try again.'
+    alert(errorMessage)
+  }
+}
+
 const printReport = () => {
   const printWindow = window.open('', '_blank')
   
@@ -339,6 +428,10 @@ const goBack = () => {
         <h1 class="text-xl sm:text-2xl font-semibold text-green-700 dark:text-green-400">Serviceable Items Report</h1>
       </div>
       <div class="flex items-center gap-2">
+        <button @click="exportToExcel" class="btn-primary flex items-center">
+          <span class="material-icons-outlined text-lg mr-1">file_download</span>
+          <span>Export Excel</span>
+        </button>
         <button @click="printReport" class="btn-primary flex items-center">
           <span class="material-icons-outlined text-lg mr-1">print</span>
           <span>Print Report</span>

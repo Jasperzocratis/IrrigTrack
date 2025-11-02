@@ -70,6 +70,16 @@ const routes = [
                 component: Inventory
             },
             {
+                path: '/categories',
+                name: 'CategoryManagement',
+                component: () => import('./pages/CategoryManagement.vue')
+            },
+            {
+                path: '/locations',
+                name: 'LocationManagement',
+                component: () => import('./pages/LocationManagement.vue')
+            },
+            {
                 path: '/add-item',
                 name: 'AddItem',
                 component: AddItem

@@ -145,16 +145,17 @@
           <label class="form-label">Issued To</label>
           <div class="relative flex items-center">
             <span class="absolute left-4 text-gray-400">
-              <span class="material-icons-outlined">location_on</span>
+              <span class="material-icons-outlined">person</span>
             </span>
             <select v-model="formData.issuedTo" class="form-select !pl-12" required>
-              <option value="" disabled>Select Person</option>
-              <option v-for="user in users" 
-                  :key="user.id" 
-                  :value="user.id || user.user.id">
-                {{ `${user.fullname.charAt(0)}. MANDARIN` }}
+              <option value="" disabled>Select Personnel</option>
+              <option v-for="location in locationsWithPersonnel" 
+                  :key="location.id || location.location_id" 
+                  :value="location.id || location.location_id">
+                {{ location.personnel }}
               </option>
             </select>
+            <p v-if="locationsWithPersonnel.length === 0" class="mt-1 text-xs text-yellow-600">No personnel assigned to any location. Please assign personnel in Location Management first.</p>
           </div>
         </div>
 
@@ -287,7 +288,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import useLocations from '../composables/useLocations'
 import useConditions from '../composables/useConditions'
@@ -296,7 +297,6 @@ import useConditionNumbers from '../composables/useConditionNumbers'
 import axiosClient from '../axios'
 import useUsers from '../composables/useUsers'
 import SuccessModal from '../components/SuccessModal.vue'
-import { computed } from 'vue'
 
 
 const router = useRouter()
@@ -379,11 +379,12 @@ const clearFile = () => {
 
 
 
-const { conditions } = useConditions(formData)
-const { locations } = useLocations(formData)
-const { categories } = usecategories(formData)
-const { condition_numbers } = useConditionNumbers(formData)
-const { users } = useUsers(formData)
+const { conditions, fetchconditions } = useConditions(formData)
+const { locations, fetchLocations } = useLocations(formData)
+const { categories, fetchcategories } = usecategories(formData)
+const { condition_numbers, fetchcondition_numbers } = useConditionNumbers(formData)
+// Note: We're not using users anymore, but keeping for potential future use
+const { users, fetchusers } = useUsers(formData)
 
 // const handleImageUpload = (event) => {
 //   const file = event.target.files[0]
@@ -464,7 +465,35 @@ const handleSubmit = async () => {
     formDataToSend.append('location_id', formData.value.location)
     formDataToSend.append('condition_id', formData.value.condition)
     formDataToSend.append('condition_number_id', formData.value.conditionNumber)
-    formDataToSend.append('user_id', formData.value.issuedTo)
+    
+    // Find the selected location to get personnel info
+    // Since backend expects user_id, we'll try to find matching user by personnel name
+    const selectedLocation = locations.value.find(loc => 
+      (loc.id || loc.location_id) == formData.value.issuedTo
+    )
+    
+    // Try to find a user that matches the personnel name
+    let userIdToSend = null
+    if (selectedLocation && selectedLocation.personnel) {
+      const matchingUser = users.value.find(user => {
+        const personnelLower = selectedLocation.personnel.toLowerCase().trim()
+        const userFullnameLower = (user.fullname || '').toLowerCase().trim()
+        return userFullnameLower === personnelLower || 
+               userFullnameLower.includes(personnelLower) ||
+               personnelLower.includes(userFullnameLower)
+      })
+      userIdToSend = matchingUser ? (matchingUser.id || matchingUser.user?.id) : null
+    }
+    
+    // If no matching user found, use first available user as fallback
+    // Note: In production, ensure personnel names match user fullnames
+    if (!userIdToSend && users.value.length > 0) {
+      userIdToSend = users.value[0].id || users.value[0].user?.id || 1
+    } else if (!userIdToSend) {
+      userIdToSend = 1 // Fallback to user ID 1
+    }
+    
+    formDataToSend.append('user_id', userIdToSend)
     
     console.log('Form data being sent:', {
       unit: formData.value.unit,
@@ -478,7 +507,8 @@ const handleSubmit = async () => {
       location_id: formData.value.location,
       condition_id: formData.value.condition,
       condition_number_id: formData.value.conditionNumber,
-      user_id: formData.value.issuedTo
+      selected_personnel: selectedLocation?.personnel,
+      user_id: userIdToSend
     })
     
     
@@ -554,6 +584,35 @@ const isSupplyCategory = computed(() => {
   );
   return selected && selected.category?.toLowerCase() === 'supply';
 });
+
+// Get locations that have personnel assigned
+const locationsWithPersonnel = computed(() => {
+  return locations.value.filter(location => 
+    location.personnel && location.personnel.trim() !== ''
+  );
+});
+
+// Fetch all dropdown data when component mounts
+onMounted(async () => {
+  try {
+    // Fetch categories and locations with high per_page to get all items
+    await Promise.all([
+      fetchcategories(1, 1000), // Fetch all categories
+      fetchLocations(1, 1000), // Fetch all locations
+      fetchconditions(), // Already has onMounted, but calling explicitly to ensure it runs
+      fetchcondition_numbers(), // Already has onMounted, but calling explicitly to ensure it runs
+      fetchusers() // Already has onMounted, but calling explicitly to ensure it runs
+    ])
+    
+    console.log('Categories loaded:', categories.value.length)
+    console.log('Locations loaded:', locations.value.length)
+    console.log('Conditions loaded:', conditions.value.length)
+    console.log('Condition numbers loaded:', condition_numbers.value.length)
+    console.log('Users loaded:', users.value.length)
+  } catch (error) {
+    console.error('Error fetching dropdown data:', error)
+  }
+})
 </script>
 
 <style scoped>

@@ -102,6 +102,11 @@ const router = createRouter({
       ]
     },
     {
+      path: '/categories',
+      name: 'CategoryManagement',
+      component: () => import('../pages/CategoryManagement.vue')
+    },
+    {
       path: '/restock',
       name: 'Restock',
       component: Restock
