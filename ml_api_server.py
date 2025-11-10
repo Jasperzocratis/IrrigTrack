@@ -186,8 +186,9 @@ def predict_consumables():
         }), 500
 
 if __name__ == '__main__':
+    import os
     host = '0.0.0.0'
-    port = 5000
+    port = int(os.environ.get('PORT', 5000))  # Use PORT env var for cloud platforms like DigitalOcean
     
     print('=' * 60)
     print('🚀 Starting ML Forecast API Server')
@@ -200,5 +201,7 @@ if __name__ == '__main__':
     print('Press Ctrl+C to stop the server')
     print()
     
-    app.run(host=host, port=port, debug=True)
+    # Disable debug mode in production (when PORT is set by platform)
+    debug_mode = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true' if os.environ.get('PORT') else True
+    app.run(host=host, port=port, debug=debug_mode)
 
