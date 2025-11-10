@@ -9,7 +9,9 @@
   "scripts": {
     "install-frontend": "cd frontend-vue && npm install",
     "build-frontend": "cd frontend-vue && npm run build",
-    "dev-frontend": "cd frontend-vue && npm run dev"
+    "dev-frontend": "cd frontend-vue && npm run dev",
+    "start": "cd frontend-vue && npm run preview -- --host 0.0.0.0 --port $PORT",
+    "build": "cd frontend-vue && npm run build"
   },
   "engines": {
     "node": ">=18.0.0",
