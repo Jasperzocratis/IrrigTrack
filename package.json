@@ -3,16 +3,12 @@
   "version": "1.0.0",
   "description": "IrrigTrack - Multi-component application with Laravel backend, Vue.js frontend, and Python ML API",
   "private": true,
-  "workspaces": [
-    "frontend-vue"
-  ],
   "scripts": {
     "install-frontend": "cd frontend-vue && npm install",
     "build-frontend": "cd frontend-vue && npm run build",
     "dev-frontend": "cd frontend-vue && npm run dev",
     "start": "cd frontend-vue && npx serve -s dist -l $PORT",
     "build": "cd frontend-vue && npm install && npm run build",
-    "postinstall": "cd frontend-vue && npm install",
     "heroku-postbuild": "cd frontend-vue && npm install && npm run build"
   },
   "engines": {
