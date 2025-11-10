@@ -7,7 +7,7 @@
     "install-frontend": "cd frontend-vue && npm install",
     "build-frontend": "cd frontend-vue && npm run build",
     "dev-frontend": "cd frontend-vue && npm run dev",
-    "start": "cd frontend-vue && npx serve -s dist -l ${PORT:-8080}",
+    "start": "cd frontend-vue && npx serve -s dist -l $PORT",
     "build": "cd frontend-vue && npm install && npm run build",
     "heroku-postbuild": "cd frontend-vue && npm install && npm run build"
   },
