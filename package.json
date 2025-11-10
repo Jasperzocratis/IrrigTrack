@@ -1,0 +1,19 @@
+{
+  "name": "irrigtrack",
+  "version": "1.0.0",
+  "description": "IrrigTrack - Multi-component application with Laravel backend, Vue.js frontend, and Python ML API",
+  "private": true,
+  "workspaces": [
+    "frontend-vue"
+  ],
+  "scripts": {
+    "install-frontend": "cd frontend-vue && npm install",
+    "build-frontend": "cd frontend-vue && npm run build",
+    "dev-frontend": "cd frontend-vue && npm run dev"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}
+
